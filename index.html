@@ -1,82 +1,14 @@
-import requests
-import json
-
-OPENAI_API_KEY = "your_openai_api_key"
-TELEGRAM_TOKEN = "your_telegram_bot_token"
-
-# Алгоритм в текстовом виде
-ALGORITHM_DESCRIPTION = """
-Ты бот, который помогает арендаторам договариваться с арендодателями. Используй следующий алгоритм:
-1. Если пользователь говорит о личных причинах, уточни, нужно ли ускорить поиск нового жильца.
-2. Если вопрос касается оплаты или залога:
-   - Сообщи, что оплата 35 тыс. + коммунальные услуги, а залог 25 тыс.
-   - Предложи списать 5 тыс. с залога, если пользователь поможет найти жильца и покажет квартиру.
-3. Если упоминается дата (например, 13 января):
-   - Рассчитай оплату пропорционально использованным дням и уточни, сколько пользователь готов оплатить до выезда.
-4. Если упоминаются показы квартиры:
-   - Предложи пользователю помогать с показами, чтобы ускорить процесс.
-5. Если запрос не подходит под алгоритм, дай нейтральный и вежливый ответ.
-"""
-
-def ask_openai_with_algorithm(user_message):
-    """
-    Запрос к OpenAI с передачей алгоритма как контекста.
-    """
-    headers = {
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    # Передаем алгоритм и сообщение пользователя
-    data = {
-        "model": "gpt-3.5-turbo",
-        "messages": [
-            {"role": "system", "content": ALGORITHM_DESCRIPTION},
-            {"role": "user", "content": user_message}
-        ],
-        "max_tokens": 500,
-    }
-
-    response = requests.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers=headers,
-        json=data,
+    driver_config = ydb.DriverConfig(
+        'grpcs://ydb.serverless.yandexcloud.net:2135', '/ru-central1/b1gm7qip4sdep322r0b3/etn55fsfav32krmaaqk4',
+        credentials=ydb.credentials_from_env_variables(),
+        root_certificates=ydb.load_ydb_root_certificate(),
     )
+    print(driver_config)
+    with ydb.Driver(driver_config) as driver:
+        try:
+            driver.wait(timeout=15)
+        except TimeoutError:
+            print("Connect failed to YDB")
+            print("Last reported errors by discovery:")
+            print(driver.discovery_debug_details())
 
-    if response.status_code == 200:
-        return response.json()["choices"][0]["message"]["content"].strip()
-    else:
-        return "Произошла ошибка при общении с OpenAI. Попробуйте позже."
-
-
-def handler(event, context):
-    """
-    Основная функция обработки вебхуков Telegram.
-    """
-    body = json.loads(event['body'])
-    
-    if 'message' not in body:
-        return {
-            "statusCode": 200,
-            "body": json.dumps({"ok": True})
-        }
-
-    message = body['message']
-    chat_id = message['chat']['id']
-    user_message = message.get('text', '')
-
-    # Запрашиваем OpenAI с алгоритмом
-    bot_reply = ask_openai_with_algorithm(user_message)
-
-    # Отправляем ответ в Telegram
-    requests.post(
-        f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-        json={
-            "chat_id": chat_id,
-            "text": bot_reply,
-        }
-    )
-
-    return {
-        "statusCode": 200,
-        "body": json.dumps({"ok": True}),
-    }
